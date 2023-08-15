@@ -51,10 +51,15 @@ export default defineConfig({
         },
     },
     server: {
-        port: 8080,
+        port: 8081,
         proxy: {
             '/chat': {
-                target: 'http://10.140.0.151:8081', //jiawei
+                target: 'http://10.140.1.76:8083', //jiawei
+                changeOrigin: true,
+            },
+
+            '/login': {
+                target: 'http://10.140.1.76:8083', //jiawei
                 changeOrigin: true,
             },
         },
