@@ -6,8 +6,10 @@ import { IdContext } from '@/utils/idcontexts';
 import { ModelContext } from '@/utils/modelcontext';
 import { sessionMesage } from '@/utils/sessionInterface';
 import { Input, Modal, Select, Tooltip } from 'antd';
-import PUYUC from 'chat-webkit';
 import { sseMesage } from 'chat-webkit/dist/types/components/chat-box/chatInterface';
+import PUYUC from 'chat-webkit';
+
+// import { sseMesage } from 'chat-webkit/dist/types/components/chat-box/chatInterface';
 import { useContext, useEffect, useRef, useState } from 'react';
 import styles from './chat.module.less';
 
@@ -20,8 +22,7 @@ import styles from './chat.module.less';
  */
 const Chat: React.FC = () => {
   const [openModelConfig, setOpenModelConfig] = useState(false) // 开启 model 的 generate_kwargs 的配置参数
-  const modeContext = useContext(ModeContext)
-  const freeze = useContext(FreezeContext);
+  const [stopStatus, setstopStatus] = useState(false)
   const mcf = new ModelConfig(
     "fnlp/moss-moon-003-sft",
     "moss_01",
@@ -52,13 +53,6 @@ const Chat: React.FC = () => {
   let sessionList: sessionMesage = {}
   sessionList = JSON.parse(cachedSessionList!)
   console.log("chat session list", sessionList)
-  // if(sessionList['0'].length === 0) {
-  //   freeze?.setFreeze('no')
-  // } else {
-  //   freeze?.setFreeze('yes')
-  //   // 找到模式
-  //   // eventBus.emit('findMode', sessionId)
-  // }
 
   if (models != null)
     models.forEach((model) => {
@@ -101,8 +95,8 @@ const Chat: React.FC = () => {
     let new_session_list: sessionMesage = {}
     refs.map((ref, index) => {
       if (index < new_models?.length!) {
+        // new_session_list[index] = ref.current.getSessionList()
         new_session_list[new_models[index].model_id] = ref.current.getSessionList()
-        // new_session_list.push(ref.current.getSessionList())
         console.log('收到对话', ref.current.getSessionList())
       }
     })
@@ -121,11 +115,29 @@ const Chat: React.FC = () => {
       new_session_list[key] = session
     });
     sessionList = new_session_list
+    const dialogue_ids: {[key: string]: string} = {}
+    // 获取dialogue_id
+    console.log(new_session_list)
+    Object.keys(sessionList).map(session => {
+      console.log(sessionList)
+      // 获取最后一条数据
+      const lastDialogue = sessionList[session][sessionList[session].length - 1];
+      // console.log(sessionList[session], session.length - 1, new_session_list)
+      // console.log("debug error ", lastDialogue, new_models, session, Number(session), new_models[session])
+      for (let index = 0; index < new_models.length; index++) {
+        if(new_models[index].model_id == session){
+          // 找到对应模型的名字
+          dialogue_ids[new_models[index].nickname] = lastDialogue.id.toString()
+        }
+        
+      }
+      // console.log("dialogue_id", dialogue_ids)
+      // dialogue_ids[new_models[Number(session)].nickname] = lastDialogue.id.toString()
+
+    })
+    eventBus.emit('sendVoteDict', dialogue_ids)
     localStorage.setItem(sessionId!, JSON.stringify(new_session_list))
     console.log('已经保存到', sessionId)
-    // if(sessionList['0'].length === 1) {
-    //   eventBus.emit('setMode', mode, sessionId)
-    // }
   };
   // 关闭某个模型
   const closeModel = (close_Model: ModelConfig, index: number, models: ModelConfig[]) => {
@@ -160,9 +172,11 @@ const Chat: React.FC = () => {
             }
           })
       // 对话开始前， 禁用会话列表, 禁用切换模式, 禁用输入框输入
+      setstopStatus(true)
       eventBus.emit('banSessionList', true)  // 禁用会话切换
       eventBus.emit('banModeEvent', true)  // 禁用模式
       eventBus.emit('banInputEvent', true)  // 禁用输入
+      eventBus.emit('banVote', true) // 会话之后vote不能点击
       // 开始对话
       startSse(question, models)
       // 异步保存缓存
@@ -178,16 +192,15 @@ const Chat: React.FC = () => {
             eventBus.emit("annotateSession", false, sessionId)
           }
         else {
-          console.log("[Debug] 当前为debug模式, 用户对话不会禁止")
           eventBus.emit('banInputEvent', false) 
         }
         // 会话结束后
         // 对话开始前， 开启会话列表
-        console.log("开启会话列表")
+        setstopStatus(false)
         eventBus.emit('banSessionList', false) // 禁用会话切换
         eventBus.emit('banModeEvent', false) // 开启模式
-        // eventBus.emit('banInputEvent', false)
-      }, 5000); // 延迟时间为 1000 毫秒（1秒）
+        eventBus.emit('banVote', false) // 会话之后vote不能点击
+      }, 10000); // 延迟时间为 1000 毫秒（1秒）
     };
     eventBus.on('sendMessage', listener);
     return () => {
@@ -196,9 +209,6 @@ const Chat: React.FC = () => {
     };
   }, []);
 
-  // let doWrap = styles.wrap;
-  // let doWrap = styles.noWrap;
-  // const doWrap = useRef(styles.noWrap);
   const [doWrap, updateDoWrap] = useState(styles.noWrap);
 
   return (
@@ -269,8 +279,8 @@ const Chat: React.FC = () => {
                   </div>
                 </Tooltip>
 
-                <Tooltip title={<span className={styles.tooltipTitle}>暂停模型对话</span>}>
-                  <div onClick={() => stopModelSse(model, index, models)}>
+                <Tooltip title={<span className={styles.tooltipTitle}>暂停模型对话</span>} >
+                  <div onClick={() => stopModelSse(model, index, models)} style={stopStatus ? {pointerEvents: 'none', opacity: 0.5} : {}}>
                     {model.start ? (<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
                       <path d="M9.43701 7.95312C9.9893 7.95312 10.437 8.40084 10.437 8.95312V15.0786C10.437 15.6308 9.9893 16.0786 9.43701 16.0786C8.88473 16.0786 8.43701 15.6308 8.43701 15.0786V8.95312C8.43701 8.40084 8.88473 7.95312 9.43701 7.95312Z" fill="white" fill-opacity="0.85" />
                       <path d="M15.5269 8.95312C15.5269 8.40084 15.0791 7.95312 14.5269 7.95312C13.9746 7.95312 13.5269 8.40084 13.5269 8.95312V15.0786C13.5269 15.6308 13.9746 16.0786 14.5269 16.0786C15.0791 16.0786 15.5269 15.6308 15.5269 15.0786V8.95312Z" fill="white" fill-opacity="0.85" />
@@ -322,6 +332,7 @@ const Chat: React.FC = () => {
             </div>
             <div className={styles.main} key={index + ""}>
               <PUYUC.ChatBox
+                sseStopCallback={(url)=>{ alert(url);}}
                 propsSessionList={sessionList[model.model_id]}
                 url={model.url + "/chat/generate?turn_id=" + sessionId + "&username=" + localStorage.getItem('username') + "&role=" + localStorage.getItem('permission')}
                 ref={refs[index]}
