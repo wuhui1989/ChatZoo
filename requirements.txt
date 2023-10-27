@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+transformers>=4.26
+accelerate
+prettytable
+loguru
+peewee
+sse_starlette
